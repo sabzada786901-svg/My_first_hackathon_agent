@@ -1,7 +1,8 @@
 import os
+import json
 import asyncio
-from app.models import KisanDostResponse
-from app.agents_config import kisan_dost_agent
+
+from pathlib import Path
 from dotenv import load_dotenv
 
 from agents import (
@@ -17,13 +18,14 @@ from agents import (
     OutputGuardrailTripwireTriggered,
 )
 
-from app.tools import (
-    crop_advisor,
-    fertilizer_calculator,
-    profit_estimator,
-)
-
 from app.models import KisanDostResponse
+
+from app.agents_config import (
+    agronomy_agent,
+    pest_agent,
+    market_agent,
+    finance_agent,
+)
 
 
 # =========================================================
@@ -63,6 +65,111 @@ model = OpenAIChatCompletionsModel(
 
 
 # =========================================================
+# MEMORY SYSTEM
+# =========================================================
+
+MEMORY_FILE = Path("memory.json")
+
+
+def load_memory():
+    """Load previous farmer conversation."""
+
+    if not MEMORY_FILE.exists():
+        return []
+
+    try:
+        with open(
+            MEMORY_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            data = json.load(file)
+
+            if isinstance(data, list):
+                return data
+
+            return []
+
+    except (
+        json.JSONDecodeError,
+        OSError,
+    ):
+
+        return []
+
+
+def save_memory(memory):
+    """Save farmer conversation."""
+
+    try:
+
+        with open(
+            MEMORY_FILE,
+            "w",
+            encoding="utf-8"
+        ) as file:
+
+            json.dump(
+                memory,
+                file,
+                ensure_ascii=False,
+                indent=4,
+            )
+
+    except OSError as e:
+
+        print(
+            f"\n⚠️ Memory save failed: {e}"
+        )
+
+
+def build_context(memory, current_question):
+    """
+    Build conversation context from previous
+    farmer messages and current question.
+    """
+
+    context_parts = []
+
+    if memory:
+
+        context_parts.append(
+            "PREVIOUS FARMER CONVERSATION:"
+        )
+
+        for item in memory:
+
+            farmer_message = item.get(
+                "farmer",
+                ""
+            )
+
+            assistant_message = item.get(
+                "assistant",
+                ""
+            )
+
+            context_parts.append(
+                f"Farmer: {farmer_message}"
+            )
+
+            context_parts.append(
+                f"Kisan Dost: {assistant_message}"
+            )
+
+    context_parts.append(
+        "CURRENT FARMER QUESTION:"
+    )
+
+    context_parts.append(
+        current_question
+    )
+
+    return "\n\n".join(context_parts)
+
+
+# =========================================================
 # 1. INPUT GUARDRAIL
 # =========================================================
 
@@ -73,19 +180,37 @@ async def agriculture_input_guardrail(
     input,
 ) -> GuardrailFunctionOutput:
 
-    text = str(input).lower().strip()
+    return GuardrailFunctionOutput(
+        output_info="Input accepted for Kisan Dost.",
+        tripwire_triggered=False,
+    )
 
+    # Safely convert input to text
+    if isinstance(input, str):
+
+        text = input.lower().strip()
+
+    else:
+
+        text = str(input).lower().strip()
+
+    # Agriculture keywords
     agriculture_keywords = [
+
+        # General
         "crop",
         "fasal",
         "farmer",
         "kisan",
         "farming",
         "agriculture",
+        "agri",
         "zameen",
         "land",
         "soil",
         "mitti",
+
+        # Crops
         "wheat",
         "gandum",
         "cotton",
@@ -94,19 +219,25 @@ async def agriculture_input_guardrail(
         "chawal",
         "maize",
         "makai",
-        "chickpea",
         "chana",
-        "lentil",
         "masoor",
+
+        # Fertilizer
         "fertilizer",
         "khaad",
         "urea",
         "dap",
+
+        # Pest
         "pesticide",
         "spray",
         "keera",
+        "keeray",
+        "pest",
         "disease",
         "bimari",
+
+        # Weather
         "weather",
         "mausam",
         "rain",
@@ -114,16 +245,38 @@ async def agriculture_input_guardrail(
         "irrigation",
         "pani",
         "water",
+
+        # Market
         "mandi",
         "price",
         "rate",
+        "market",
+
+        # Finance
         "profit",
         "munafa",
         "yield",
         "paidawar",
+        "cost",
+        "income",
+
+        # Government
         "subsidy",
         "loan",
-        "agri",
+        "government",
+        "scheme",
+        "program",
+        "support",
+
+        # Farmer information
+        "district",
+        "acre",
+        "acres",
+        "season",
+        "rabi",
+        "kharif",
+        "soil type",
+        "water availability",
     ]
 
     greetings = [
@@ -136,19 +289,73 @@ async def agriculture_input_guardrail(
         "madad",
     ]
 
+    # Memory-based follow-up questions
+    follow_up_questions = [
+
+        "batao",
+        "ab batao",
+        "phir batao",
+        "aur batao",
+        "mujhe batao",
+
+        "kya ugau",
+        "kya ugaon",
+        "kya ugana chahiye",
+        "kya ugana hai",
+
+        "kaunsi fasal",
+        "konsi fasal",
+        "kon si fasal",
+
+        "kitna pani",
+        "kitni khaad",
+        "kitna fertilizer",
+
+        "profit kitna",
+        "munafa kitna",
+
+        "kya karun",
+        "iska kya karun",
+        "is ka kya karun",
+
+        "yeh kya hai",
+        "ye kya hai",
+    ]
+
+    agriculture_match = any(
+        keyword in text
+        for keyword in agriculture_keywords
+    )
+
+    greeting_match = any(
+        greeting in text
+        for greeting in greetings
+    )
+
+    follow_up_match = any(
+        phrase in text
+        for phrase in follow_up_questions
+    )
+
     allowed = (
-        any(word in text for word in agriculture_keywords)
-        or any(word in text for word in greetings)
+        agriculture_match
+        or greeting_match
+        or follow_up_match
     )
 
     if allowed:
+
         return GuardrailFunctionOutput(
-            output_info="Input is relevant to Kisan Dost.",
+            output_info=(
+                "Input is relevant to Kisan Dost."
+            ),
             tripwire_triggered=False,
         )
 
     return GuardrailFunctionOutput(
-        output_info="Input is outside agricultural scope.",
+        output_info=(
+            "Input is outside agricultural scope."
+        ),
         tripwire_triggered=True,
     )
 
@@ -164,22 +371,33 @@ async def pesticide_safety_guardrail(
     input,
 ) -> GuardrailFunctionOutput:
 
-    text = str(input).lower()
+    if isinstance(input, str):
+
+        text = input.lower()
+
+    else:
+
+        text = str(input).lower()
 
     dangerous_patterns = [
+
         "pesticide peena",
         "pesticide peelo",
         "pesticide drink",
         "pesticide khana",
         "pesticide kha lo",
+
         "human pesticide dose",
         "insaan ko pesticide",
         "person pesticide",
         "pesticide for human",
+
         "chemical drink",
         "poison drink",
+
         "zehar peena",
         "zehar kha",
+
         "suicide pesticide",
     ]
 
@@ -189,13 +407,19 @@ async def pesticide_safety_guardrail(
     )
 
     if dangerous_request:
+
         return GuardrailFunctionOutput(
-            output_info="Dangerous pesticide or poisoning request detected.",
+            output_info=(
+                "Dangerous pesticide or poisoning "
+                "request detected."
+            ),
             tripwire_triggered=True,
         )
 
     return GuardrailFunctionOutput(
-        output_info="Pesticide safety check passed.",
+        output_info=(
+            "Pesticide safety check passed."
+        ),
         tripwire_triggered=False,
     )
 
@@ -213,22 +437,29 @@ async def output_validation_guardrail(
 
     text = str(output)
 
-    # Empty response check
+    # Empty response
     if not text.strip():
+
         return GuardrailFunctionOutput(
             output_info="Empty response detected.",
             tripwire_triggered=True,
         )
 
-    # Extremely long response protection
+    # Extremely long response
     if len(text) > 12000:
+
         return GuardrailFunctionOutput(
-            output_info="Response is excessively long.",
+            output_info=(
+                "Response is excessively long."
+            ),
             tripwire_triggered=True,
         )
 
+    text_lower = text.lower()
+
     # Unsafe medical advice
     unsafe_medical_patterns = [
+
         "take this medicine",
         "take this tablet",
         "medical prescription",
@@ -239,6 +470,7 @@ async def output_validation_guardrail(
 
     # Dangerous pesticide advice
     unsafe_pesticide_patterns = [
+
         "drink pesticide",
         "pesticide ingestion",
         "pesticide for humans",
@@ -246,16 +478,20 @@ async def output_validation_guardrail(
     ]
 
     medical_violation = any(
-        pattern in text.lower()
+        pattern in text_lower
         for pattern in unsafe_medical_patterns
     )
 
     pesticide_violation = any(
-        pattern in text.lower()
+        pattern in text_lower
         for pattern in unsafe_pesticide_patterns
     )
 
-    if medical_violation or pesticide_violation:
+    if (
+        medical_violation
+        or pesticide_violation
+    ):
+
         return GuardrailFunctionOutput(
             output_info="Unsafe output detected.",
             tripwire_triggered=True,
@@ -268,93 +504,85 @@ async def output_validation_guardrail(
 
 
 # =========================================================
-# 4. KISAN DOST AGENT
+# 4. KISAN DOST TRIAGE AGENT
 # =========================================================
 
 kisan_dost_agent = Agent(
+
     name="Kisan Dost",
 
     instructions="""
-You are Kisan Dost, an AI agricultural advisor
-for Pakistani farmers.
+
+You are Kisan Dost, an AI agricultural
+advisor for Pakistani farmers.
 
 Answer in simple Urdu-English / Roman Urdu.
 
-You help with:
+You help farmers with:
 
 - crop selection
 - fertilizer planning
 - profit estimation
 - mandi prices
-- pest and disease diagnosis
+- pest and disease guidance
 - weather and irrigation
-- agriculture-related government support
+- government agriculture support
 
-IMPORTANT RULES:
+IMPORTANT:
 
-1. Stay focused on agriculture.
+1. Understand the farmer's question.
 
-2. For crop selection use crop_advisor.
+2. Preserve previous conversation context.
 
-3. crop_advisor requires:
-   district
-   soil_type
-   season
-   water_availability
-   land_size_acres
+3. Do NOT ask the farmer to repeat
+information already available.
 
-4. Never invent missing information.
+4. If the question is about crops,
+use the Agronomy Agent.
 
-5. Ask the farmer for missing information.
+5. If the question is about pests or
+crop diseases, use the Pest Agent.
 
-6. For fertilizer questions use fertilizer_calculator.
+6. If the question is about mandi,
+prices or government support,
+use the Market Agent.
 
-7. fertilizer_calculator requires:
-   crop
-   acres
+7. If the question is about profit,
+cost or financial estimation,
+use the Finance Agent.
 
-8. For profit questions use profit_estimator.
+8. Never invent tool results.
 
-9. Never invent tool results.
+9. If required information is missing,
+ask only for the missing information.
 
-10. Clearly identify estimated information.
+10. Answer in simple Roman Urdu /
+Urdu-English.
 
-11. Never provide human medical advice.
+11. Be concise and practical.
 
-12. Never recommend pesticide ingestion.
+12. Never provide human medical advice.
 
-13. Never provide dangerous pesticide instructions.
+13. Never recommend pesticide ingestion.
 
-14. For agricultural pesticide questions,
-give safe and general guidance.
+14. For pesticide questions,
+provide only safe agricultural guidance.
 
-15. If the farmer asks something unrelated
-to agriculture, politely explain your scope.
+15. Clearly identify estimates.
 
-16. Be concise, helpful and conversational.
+16. Use existing farmer memory whenever
+it is relevant.
 
-17. Do not claim live data unless a connected
-tool actually provides it.
-
-18. If a calculation is performed, explain
-the important numbers clearly.
 """,
 
     model=model,
 
-    # =====================================================
-    # TOOLS
-    # =====================================================
-
-    tools=[
-        crop_advisor,
-        fertilizer_calculator,
-        profit_estimator,
+    handoffs=[
+        agronomy_agent,
+        pest_agent,
+        market_agent,
+        finance_agent,
     ],
-
-    # =====================================================
-    # GUARDRAILS
-    # =====================================================
 
     input_guardrails=[
         agriculture_input_guardrail,
@@ -365,44 +593,72 @@ the important numbers clearly.
         output_validation_guardrail,
     ],
 
-    # =====================================================
-    # 4. PYDANTIC OUTPUT SCHEMA
-    # =====================================================
-
     output_type=KisanDostResponse,
 )
 
 
 # =========================================================
-# 5. MAIN CHAT LOOP + ERROR HANDLING
+# 5. MAIN CHAT
 # =========================================================
 
 async def main():
 
     print()
+
     print("=" * 60)
     print("🌾 KISAN DOST — FARMER'S FRIEND")
     print("=" * 60)
 
     print()
-    print("👨‍🌾 Kisan Dost se baat karein.")
-    print("💡 Program band karne ke liye 'exit' likhein.")
+
+    print(
+        "👨‍🌾 Kisan Dost se baat karein."
+    )
+
+    print(
+        "💡 Program band karne ke liye 'exit' likhein."
+    )
+
+    print(
+        "🧠 Memory enabled."
+    )
+
     print("-" * 60)
+
+    # Load memory
+    memory = load_memory()
+
+    if memory:
+
+        print(
+            f"🧠 Previous conversation loaded: "
+            f"{len(memory)} messages"
+        )
 
     while True:
 
         try:
 
-            question = input("\n👨‍🌾 Farmer: ").strip()
+            question = input(
+                "\n👨‍🌾 Farmer: "
+            ).strip()
 
         except KeyboardInterrupt:
 
-            print("\n\n🤖 Kisan Dost: Allah Hafiz! 👋🌾")
+            print(
+                "\n\n🤖 Kisan Dost: "
+                "Allah Hafiz! 👋🌾"
+            )
+
             break
 
         except EOFError:
 
-            print("\n\n🤖 Kisan Dost: Allah Hafiz! 👋🌾")
+            print(
+                "\n\n🤖 Kisan Dost: "
+                "Allah Hafiz! 👋🌾"
+            )
+
             break
 
         # =================================================
@@ -411,7 +667,11 @@ async def main():
 
         if question.lower() == "exit":
 
-            print("\n🤖 Kisan Dost: Allah Hafiz! 👋🌾")
+            print(
+                "\n🤖 Kisan Dost: "
+                "Allah Hafiz! 👋🌾"
+            )
+
             break
 
         # =================================================
@@ -428,6 +688,15 @@ async def main():
             continue
 
         # =================================================
+        # BUILD MEMORY CONTEXT
+        # =================================================
+
+        context = build_context(
+            memory,
+            question,
+        )
+
+        # =================================================
         # RUN AGENT
         # =================================================
 
@@ -435,30 +704,57 @@ async def main():
 
             result = await Runner.run(
                 kisan_dost_agent,
-                question,
+                context,
             )
 
-            print("\n🤖 Kisan Dost:")
+            print(
+                "\n🤖 Kisan Dost:"
+            )
+
             print("-" * 60)
 
-            # Pydantic validated output
             final_output = result.final_output
+
+            # =================================================
+            # PYDANTIC RESPONSE
+            # =================================================
 
             if isinstance(
                 final_output,
-                KisanDostResponse
+                KisanDostResponse,
             ):
 
-                print(final_output.answer)
+                answer = final_output.answer
+
+                print(answer)
 
                 if final_output.safety_note:
+
                     print(
-                        f"\n⚠️ {final_output.safety_note}"
+                        f"\n⚠️ "
+                        f"{final_output.safety_note}"
                     )
 
             else:
 
-                print(final_output)
+                answer = str(
+                    final_output
+                )
+
+                print(answer)
+
+            # =================================================
+            # SAVE MEMORY
+            # =================================================
+
+            memory.append(
+                {
+                    "farmer": question,
+                    "assistant": answer,
+                }
+            )
+
+            save_memory(memory)
 
         # =================================================
         # INPUT GUARDRAIL
@@ -468,9 +764,12 @@ async def main():
 
             print(
                 "\n🛡️ Kisan Dost:"
-                "\nMaaf kijiye, main sirf farming aur "
-                "agriculture-related questions mein "
-                "madad kar sakta hoon. 🌾"
+            )
+
+            print(
+                "Maaf kijiye, main sirf farming "
+                "aur agriculture-related questions "
+                "mein madad kar sakta hoon. 🌾"
             )
 
         # =================================================
@@ -481,7 +780,11 @@ async def main():
 
             print(
                 "\n🛡️ Kisan Dost:"
-                "\nResponse safety check pass nahi kar saka."
+            )
+
+            print(
+                "Response safety check pass "
+                "nahi kar saka."
             )
 
             print(
@@ -496,7 +799,8 @@ async def main():
         except Exception as e:
 
             print(
-                "\n❌ Kisan Dost mein temporary error aa gaya."
+                "\n❌ Kisan Dost mein temporary "
+                "error aa gaya."
             )
 
             print(
@@ -504,7 +808,8 @@ async def main():
             )
 
             print(
-                f"\nTechnical error: {type(e).__name__}"
+                f"\nTechnical error: "
+                f"{type(e).__name__}: {e}"
             )
 
 
@@ -513,4 +818,5 @@ async def main():
 # =========================================================
 
 if __name__ == "__main__":
+
     asyncio.run(main())
