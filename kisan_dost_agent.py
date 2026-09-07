@@ -49,13 +49,12 @@ client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
 )
 
-
-# =========================================================
-# FREE MODEL
-# =========================================================
+# =========================================
+# model
+# =========================================
 
 model = OpenAIChatCompletionsModel(
-    model="openai/gpt-oss-20b:free",
+    model="openrouter/free",
     openai_client=client,
 )
 
