@@ -34,8 +34,7 @@ load_dotenv()
 set_tracing_disabled(True)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-if not groq_API_KEY:
+if not OPENROUTER_API_KEY:
     raise ValueError(
         "OPENROUTER_API_KEY is missing from .env file"
     )
@@ -90,7 +89,10 @@ async def agriculture_input_guardrail(
         "land",
         "soil",
         "mitti",
-
+        "silty",
+        "clay ",
+        "sandy",
+        "sindhi",
         "wheat",
         "gandum",
         "cotton",
