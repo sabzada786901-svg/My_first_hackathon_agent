@@ -2,7 +2,10 @@ import sys
 import os
 import asyncio
 
-# Project root
+# ==========================================
+# PROJECT ROOT
+# ==========================================
+
 PROJECT_ROOT = os.path.dirname(
     os.path.dirname(
         os.path.abspath(__file__)
@@ -12,14 +15,14 @@ PROJECT_ROOT = os.path.dirname(
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+
+# ==========================================
+# IMPORTS
+# ==========================================
+
 import streamlit as st
 from agents import Runner
 
-from kisan_dost_agent import kisan_dost_agent
-import streamlit as st
-import asyncio
-
-from agents import Runner
 from kisan_dost_agent import kisan_dost_agent
 
 
@@ -42,7 +45,7 @@ st.markdown("""
 <style>
 
 .stApp {
-    background-color: #black;
+    background-color: #000000;
 }
 
 .main-title {
@@ -116,12 +119,14 @@ with st.sidebar:
     st.divider()
 
     if st.button("🗑️ Clear Chat", use_container_width=True):
+
         st.session_state.messages = []
+
         st.rerun()
 
 
 # ==========================================
-# DISPLAY CHAT
+# DISPLAY CHAT HISTORY
 # ==========================================
 
 for message in st.session_state.messages:
@@ -145,16 +150,39 @@ user_input = st.chat_input(
 
 if user_input:
 
-    # Show user message
+    # --------------------------------------
+    # Save user message
+    # --------------------------------------
+
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
     })
 
+    # --------------------------------------
+    # Show user message
+    # --------------------------------------
+
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # Agent response
+    # --------------------------------------
+    # Build conversation history
+    # --------------------------------------
+
+    conversation = []
+
+    for message in st.session_state.messages:
+
+        conversation.append({
+            "role": message["role"],
+            "content": message["content"]
+        })
+
+    # --------------------------------------
+    # Run agent
+    # --------------------------------------
+
     with st.chat_message("assistant"):
 
         with st.spinner("🌾 Kisan Dost soch raha hai..."):
@@ -164,28 +192,42 @@ if user_input:
                 result = asyncio.run(
                     Runner.run(
                         kisan_dost_agent,
-                        user_input
+                        conversation
                     )
                 )
 
                 response = result.final_output
 
-                # Pydantic response
+                # --------------------------------------
+                # Handle normal text response
+                # --------------------------------------
+
                 if hasattr(response, "answer"):
 
                     answer = response.answer
 
-                    if response.safety_note:
-                        answer += (
-                            "\n\n⚠️ **Safety Note:** "
-                            + response.safety_note
-                        )
+                    if hasattr(response, "safety_note"):
+
+                        if response.safety_note:
+
+                            answer += (
+                                "\n\n⚠️ **Safety Note:** "
+                                + response.safety_note
+                            )
 
                 else:
 
                     answer = str(response)
 
+                # --------------------------------------
+                # Display response
+                # --------------------------------------
+
                 st.markdown(answer)
+
+                # --------------------------------------
+                # Save assistant response
+                # --------------------------------------
 
                 st.session_state.messages.append({
                     "role": "assistant",
@@ -195,8 +237,8 @@ if user_input:
             except Exception as e:
 
                 error = (
-                    "❌ Kisan Dost ko response generate karne mein "
-                    "problem hui.\n\n"
+                    "❌ Kisan Dost ko response generate karne "
+                    "mein problem hui.\n\n"
                     f"`{str(e)}`"
                 )
 
