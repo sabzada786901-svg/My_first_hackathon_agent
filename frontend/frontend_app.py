@@ -112,8 +112,15 @@ h3 {
 ========================================= */
 
 section[data-testid="stSidebar"] {
-    background-color: #FFFFFF !important;
+    background-color: #ffffff !important;
     border-right: 1px solid #D9E5DC;
+    transition: 1s ease;
+    color: #ffffff !important;
+}
+
+section[data-testid="stSidebar"]:hover{
+    background-color: #8FE35B !important;
+    color: #ffffff !important;
 }
 
 section[data-testid="stSidebar"] * {
@@ -130,14 +137,17 @@ section[data-testid="stSidebar"] h3 {
 /* Sidebar buttons */
 
 section[data-testid="stSidebar"] .stButton button {
-    background-color: #FFFFFF !important;
+    background-color: #ffffff !important;
     color: #176B3A !important;
     border: 1px solid #D7E4DA !important;
+    transition: 1.5s ease !important;
+    cursor: pointer !important;
 }
 
 section[data-testid="stSidebar"] .stButton button:hover {
-    background-color: #176B3A !important;
-    color: #FFFFFF !important;
+    box-shadow: 2px 0 2px #0B3D20 !important;
+    color: #ffffff !important;
+    transform: translateX(-10%) !important;
 }
 
 
@@ -165,6 +175,14 @@ div[data-testid="stMetric"] {
     border-radius: 16px !important;
     padding: 18px !important;
     box-shadow: 0 4px 15px rgba(23, 61, 41, 0.06);
+    transition: 1s ease !important;
+    cursor: pointer !important;
+}
+
+div[data-testid="stMetric"]:hover{
+    background-color: #8FE35B !important;
+    transform:translateY(-10%) !important;
+    box-shadow:0 3px 0 rgba(0, 0, 0, 0.25) !important;
 }
 
 div[data-testid="stMetric"] * {
@@ -236,7 +254,7 @@ div[data-testid="stChatInput"] textarea::placeholder {
 }
 
 .stButton > button:hover {
-    background-color: #176B3A !important;
+    background-color: #B8E986 !important;
     color: #FFFFFF !important;
     border-color: #176B3A !important;
 }
@@ -248,6 +266,10 @@ div[data-testid="stChatInput"] textarea::placeholder {
 
 hr {
     border-color: #DCE7DF !important;
+}
+
+hr:hover{
+    border-color: #000000 !important;
 }
 
 
@@ -490,7 +512,7 @@ for message in st.session_state.messages:
 # =========================================================
 
 user_input = st.chat_input(
-    "👨‍🌾 Ask Kisan Dost about your farm..."
+    "👨‍🌾 Ask me about Farming..."
 )
 
 
@@ -545,7 +567,7 @@ if user_input:
     with st.chat_message("assistant"):
 
         with st.spinner(
-            "🌾 Kisan Dost aapke sawal ka jawab prepare kar raha hai..."
+            "🌾 Kisan soch raha hai..."
         ):
 
             try:
@@ -617,6 +639,10 @@ st.divider()
 
 st.caption(
     "🌾 Kisan Dost • AI Agriculture Assistant for Pakistani Farmers"
+)
+
+st.caption(
+    "Kisan dost can make mistakes. Please check impotant info"
 )
 
 st.caption(
